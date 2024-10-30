@@ -1,8 +1,9 @@
 // Copyright © Aptos Foundation
 // SPDX-License-Identifier: Apache-2.0
 
-use super::new_test_context;
+use super::new_test_context_with_orderless_flags;
 use aptos_api_test_context::{current_function_name, TestContext};
+use rstest::rstest;
 use serde_json::json;
 use std::path::PathBuf;
 
@@ -18,8 +19,23 @@ use std::path::PathBuf;
 // 9. Init data for that resource group / member
 // 10. Read and ensure data is present
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_gen_resource_group() {
-    let mut context = new_test_context(current_function_name!());
+#[rstest(
+    use_txn_payload_v2_format,
+    use_orderless_transactions,
+    case(false, false),
+    case(true, false),
+    case(true, true)
+)]
+async fn test_gen_resource_group(
+    use_txn_payload_v2_format: bool,
+    use_orderless_transactions: bool,
+) {
+    let mut context = new_test_context_with_orderless_flags(
+        current_function_name!(),
+        use_txn_payload_v2_format,
+        use_orderless_transactions,
+    )
+    .await;
 
     // Prepare accounts
     let mut admin0 = context.create_account().await;
@@ -94,13 +110,45 @@ async fn test_gen_resource_group() {
     let resp = context
         .get(format!("/accounts/{}/transactions", user.address()).as_str())
         .await;
+    if use_orderless_transactions {
+        assert_eq!(resp.as_array().unwrap().len(), 0);
+    } else {
+        assert_eq!(resp.as_array().unwrap().len(), 2);
+        let secondary_tx = &resp.as_array().unwrap()[0];
+        assert_writeset_contains_secondary_changes(&resp.as_array().unwrap()[1]);
+        let resp = context
+            .get(
+                format!(
+                    "/transactions/by_hash/{}",
+                    secondary_tx["hash"].as_str().unwrap()
+                )
+                .as_str(),
+            )
+            .await;
+        assert_writeset_contains_secondary_changes(&resp);
+        let resp = context
+            .get(
+                format!(
+                    "/transactions/by_version/{}",
+                    secondary_tx["version"].as_str().unwrap()
+                )
+                .as_str(),
+            )
+            .await;
+        assert_writeset_contains_secondary_changes(&resp);
+    }
+
+    let resp = context
+        .get(format!("/accounts/{}/transaction_summaries", user.address()).as_str())
+        .await;
+    assert_eq!(resp.as_array().unwrap().len(), 2);
     let secondary_tx = &resp.as_array().unwrap()[0];
     assert_writeset_contains_secondary_changes(&resp.as_array().unwrap()[1]);
     let resp = context
         .get(
             format!(
                 "/transactions/by_hash/{}",
-                secondary_tx["hash"].as_str().unwrap()
+                secondary_tx["transaction_hash"].as_str().unwrap()
             )
             .as_str(),
         )
