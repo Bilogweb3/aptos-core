@@ -15,7 +15,7 @@ use crate::{
 };
 use again::RetryPolicy;
 use anyhow::{anyhow, bail, format_err};
-use aptos_logger::info;
+use log::info;
 use aptos_sdk::types::PeerId;
 use k8s_openapi::api::{
     apps::v1::{Deployment, StatefulSet},
@@ -608,18 +608,18 @@ pub async fn install_testnet_resources(
         enable_haproxy,
     )?;
 
-    info!("aptos_node_helm_values: {:?}", aptos_node_helm_values);
+    info!("aptos_node_helm_values: {}", serde_yaml::to_string(&aptos_node_helm_values).unwrap());
     info!(
-        "aptos_node_helm_values_override: {:?}",
-        aptos_node_helm_values_override
+        "aptos_node_helm_values_override: {}",
+        serde_yaml::to_string(&aptos_node_helm_values_override).unwrap()
     );
 
     merge_yaml(&mut aptos_node_helm_values, aptos_node_helm_values_override);
     merge_yaml(&mut genesis_helm_values, genesis_helm_values_override);
 
     info!(
-        "aptos_node_helm_values after override: {:?}",
-        aptos_node_helm_values
+        "aptos_node_helm_values after override: {}",
+       serde_yaml::to_string(& aptos_node_helm_values).unwrap(),
     );
 
     // disable uploading genesis to blob storage since indexer requires it in the cluster
